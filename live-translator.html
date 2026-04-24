@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Live Interpreter</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    min-height: 100vh;
+    background: linear-gradient(145deg, #080d1a 0%, #0e1525 55%, #080d1a 100%);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #e2eaff;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* HEADER */
+  #header {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.025);
+    backdrop-filter: blur(10px);
+  }
+  .app-title-row {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  }
+  .app-icon {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(135deg, #388bfd, #1a5ccc);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; box-shadow: 0 4px 14px rgba(56,139,253,0.4);
+  }
+  .app-name { font-size: 17px; font-weight: 700; color: #e8f0ff; }
+  .app-sub  { font-size: 10px; color: #3d5070; letter-spacing: 1.5px; margin-top: 2px; }
+
+  /* LANG SELECTOR */
+  .lang-bar { display: flex; align-items: center; gap: 8px; }
+  .lang-picker { position: relative; flex: 1; }
+  .lang-btn {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.07);
+    border: 1.5px solid rgba(255,255,255,0.18);
+    border-radius: 12px; padding: 10px 14px; cursor: pointer;
+    color: #f0f4ff; font-family: inherit; transition: all 0.15s;
+    text-align: left;
+  }
+  .lang-btn:hover, .lang-btn.open { background: rgba(255,255,255,0.13); }
+  .lang-btn-flag { font-size: 22px; }
+  .lang-btn-info { flex: 1; }
+  .lang-btn-native { font-size: 14px; font-weight: 600; line-height: 1; color: #f0f4ff; }
+  .lang-btn-en     { font-size: 10px; opacity: 0.55; letter-spacing: 1px; margin-top: 2px; }
+  .lang-btn-arrow  { font-size: 10px; opacity: 0.5; }
+
+  .lang-menu {
+    position: absolute; top: calc(100% + 8px); left: 0;
+    width: 190px;
+    background: #151b2e;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 14px; overflow: hidden; z-index: 999;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    display: none;
+  }
+  .lang-menu.right { left: auto; right: 0; }
+  .lang-menu.show  { display: block; }
+  .lang-opt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 16px; cursor: pointer;
+    border-left: 3px solid transparent;
+    color: #e2eaff; transition: background 0.1s;
+  }
+  .lang-opt:hover     { background: rgba(255,255,255,0.07); }
+  .lang-opt.selected  { background: rgba(99,179,237,0.18); border-left-color: #63b3ed; }
+  .lang-opt-flag      { font-size: 20px; }
+  .lang-opt-native    { font-size: 13px; font-weight: 500; }
+  .lang-opt-name      { font-size: 10px; opacity: 0.45; }
+
+  .swap-btn {
+    flex-shrink: 0; width: 38px; height: 38px;
+    background: rgba(56,139,253,0.12);
+    border: 1px solid rgba(56,139,253,0.3);
+    border-radius: 10px; cursor: pointer;
+    color: #388bfd; font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  .swap-btn:hover { background: rgba(56,139,253,0.22); }
+
+  /* COLUMN HEADERS */
+  #col-headers {
+    display: grid; grid-template-columns: 1fr 1fr;
+    background: rgba(255,255,255,0.02);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .col-header {
+    padding: 7px 16px; display: flex; align-items: center; gap: 6px;
+    font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600;
+  }
+  .col-header:first-child { border-right: 1px solid rgba(255,255,255,0.05); color: #388bfd; }
+  .col-header:last-child  { color: #4ade80; }
+
+  /* MESSAGES */
+  #messages {
+    flex: 1; overflow-y: auto; padding: 16px 0 8px;
+  }
+  .empty-state {
+    text-align: center; padding: 60px 20px;
+  }
+  .empty-state .big-flags { font-size: 50px; margin-bottom: 12px; }
+  .empty-state p { color: #2d3f5f; font-size: 14px; margin-top: 6px; }
+
+  .msg-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .msg-row:nth-child(even) { background: rgba(255,255,255,0.013); }
+  .msg-original, .msg-translation {
+    padding: 15px 16px;
+  }
+  .msg-original { border-right: 1px solid rgba(255,255,255,0.05); }
+  .msg-text-orig { font-size: 15px; line-height: 1.7; color: #c8d8f0; }
+  .msg-text-trans { font-size: 15px; line-height: 1.7; color: #86efac; flex: 1; }
+  .msg-translation { display: flex; align-items: flex-start; gap: 8px; }
+  .msg-error { font-size: 13px; color: #f87171; }
+
+  .replay-btn {
+    flex-shrink: 0; margin-top: 2px;
+    background: rgba(74,222,128,0.1);
+    border: 1px solid rgba(74,222,128,0.2);
+    border-radius: 8px; width: 28px; height: 28px;
+    cursor: pointer; color: #4ade80; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .replay-btn:hover { background: rgba(74,222,128,0.2); }
+
+  .dots { display: flex; gap: 5px; align-items: center; padding-top: 8px; }
+  .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #4ade80; opacity: 0.6;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+
+  /* INPUT BAR */
+  #input-bar {
+    padding: 12px 16px 20px;
+    border-top: 1px solid rgba(255,255,255,0.07);
+    background: rgba(0,0,0,0.3);
+    backdrop-filter: blur(10px);
+  }
+  #mic-error {
+    font-size: 12px; color: #f87171;
+    margin-bottom: 8px; text-align: center; display: none;
+  }
+  .input-box {
+    display: flex; gap: 8px; align-items: flex-end;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.11);
+    border-radius: 14px; padding: 10px 12px;
+  }
+  #mic-btn {
+    flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.14);
+    cursor: pointer; color: #94a3b8; font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  #mic-btn.recording {
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    border: none; color: #fff;
+    animation: micPulse 1s ease-in-out infinite;
+    box-shadow: 0 0 18px rgba(239,68,68,0.5);
+  }
+  #text-input {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: #e2eaff; font-size: 15px; line-height: 1.6;
+    resize: none; font-family: inherit; max-height: 120px; overflow-y: auto;
+  }
+  #text-input::placeholder { color: #1e2d44; }
+  #send-btn {
+    flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px;
+    background: rgba(255,255,255,0.05); border: none;
+    cursor: not-allowed; color: #fff; font-size: 17px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+  }
+  #send-btn.active {
+    background: linear-gradient(135deg, #388bfd, #1a5ccc);
+    cursor: pointer;
+    box-shadow: 0 3px 14px rgba(56,139,253,0.4);
+  }
+  .input-hint {
+    margin-top: 7px; font-size: 11px; color: #1e2d44; text-align: center;
+  }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+
+  @keyframes pulse {
+    0%,100% { transform: scale(1); opacity: 0.4; }
+    50%      { transform: scale(1.5); opacity: 1; }
+  }
+  @keyframes micPulse {
+    0%,100% { box-shadow: 0 0 18px rgba(239,68,68,0.5); }
+    50%      { box-shadow: 0 0 28px rgba(239,68,68,0.9); }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <div class="app-title-row">
+    <div class="app-icon">🌐</div>
+    <div>
+      <div class="app-name">Live Interpreter</div>
+      <div class="app-sub">VOICE · TEXT · 7 LANGUAGES</div>
+    </div>
+  </div>
+
+  <div class="lang-bar">
+    <!-- FROM picker -->
+    <div class="lang-picker" id="from-picker">
+      <button class="lang-btn" id="from-btn" onclick="toggleMenu('from')">
+        <span class="lang-btn-flag" id="from-flag">🇬🇧</span>
+        <div class="lang-btn-info">
+          <div class="lang-btn-native" id="from-native">English</div>
+          <div class="lang-btn-en" id="from-en">ENGLISH</div>
+        </div>
+        <span class="lang-btn-arrow">▼</span>
+      </button>
+      <div class="lang-menu" id="from-menu"></div>
+    </div>
+
+    <button class="swap-btn" onclick="swapLangs()">⇄</button>
+
+    <!-- TO picker -->
+    <div class="lang-picker" id="to-picker">
+      <button class="lang-btn" id="to-btn" onclick="toggleMenu('to')">
+        <span class="lang-btn-flag" id="to-flag">🇸🇦</span>
+        <div class="lang-btn-info">
+          <div class="lang-btn-native" id="to-native">العربية</div>
+          <div class="lang-btn-en" id="to-en">ARABIC</div>
+        </div>
+        <span class="lang-btn-arrow">▼</span>
+      </button>
+      <div class="lang-menu right" id="to-menu"></div>
+    </div>
+  </div>
+</div>
+
+<!-- COLUMN HEADERS -->
+<div id="col-headers">
+  <div class="col-header"><span id="col-from-flag">🇬🇧</span> <span id="col-from-name">English</span></div>
+  <div class="col-header"><span id="col-to-flag">🇸🇦</span> <span id="col-to-name">Arabic</span></div>
+</div>
+
+<!-- MESSAGES -->
+<div id="messages">
+  <div class="empty-state" id="empty-state">
+    <div class="big-flags" id="empty-flags">🇬🇧 ⇄ 🇸🇦</div>
+    <p id="empty-hint">Type or tap the mic to speak in English</p>
+    <p>Translation will be spoken aloud automatically</p>
+  </div>
+</div>
+
+<!-- INPUT BAR -->
+<div id="input-bar">
+  <div id="mic-error"></div>
+  <div class="input-box">
+    <button id="mic-btn" onclick="toggleMic()" title="Speak">🎤</button>
+    <textarea id="text-input" rows="1" placeholder="Type in English…"
+      oninput="onInput(this)" onkeydown="onKey(event)"></textarea>
+    <button id="send-btn" onclick="sendText()" title="Send">↑</button>
+  </div>
+  <div class="input-hint">🎤 Tap mic to speak · Enter to send · 🔊 Tap speaker to replay</div>
+</div>
+
+<script>
+const LANGUAGES = [
+  { code:"en", name:"English",  native:"English",  flag:"🇬🇧", rtl:false, bcp:"en-US", tts:"en-US" },
+  { code:"ar", name:"Arabic",   native:"العربية",  flag:"🇸🇦", rtl:true,  bcp:"ar-SA", tts:"ar-SA" },
+  { code:"zh", name:"Chinese",  native:"中文",     flag:"🇨🇳", rtl:false, bcp:"zh-CN", tts:"zh-CN" },
+  { code:"tr", name:"Turkish",  native:"Türkçe",   flag:"🇹🇷", rtl:false, bcp:"tr-TR", tts:"tr-TR" },
+  { code:"es", name:"Spanish",  native:"Español",  flag:"🇪🇸", rtl:false, bcp:"es-ES", tts:"es-ES" },
+  { code:"ko", name:"Korean",   native:"한국어",   flag:"🇰🇷", rtl:false, bcp:"ko-KR", tts:"ko-KR" },
+  { code:"fr", name:"French",   native:"Français", flag:"🇫🇷", rtl:false, bcp:"fr-FR", tts:"fr-FR" },
+];
+
+let fromIdx = 0, toIdx = 1;
+let loading = false, recording = false;
+let recognition = null;
+
+// ── BUILD MENUS ──────────────────────────────────────────────
+function buildMenus() {
+  ['from','to'].forEach(side => {
+    const menu = document.getElementById(side + '-menu');
+    menu.innerHTML = '';
+    LANGUAGES.forEach((l, i) => {
+      const div = document.createElement('div');
+      div.className = 'lang-opt' + (i === (side==='from'?fromIdx:toIdx) ? ' selected' : '');
+      div.innerHTML = `<span class="lang-opt-flag">${l.flag}</span><div><div class="lang-opt-native">${l.native}</div><div class="lang-opt-name">${l.name}</div></div>`;
+      div.onclick = () => pickLang(side, i);
+      menu.appendChild(div);
+    });
+  });
+}
+
+function updateUI() {
+  const f = LANGUAGES[fromIdx], t = LANGUAGES[toIdx];
+  // from btn
+  document.getElementById('from-flag').textContent   = f.flag;
+  document.getElementById('from-native').textContent = f.native;
+  document.getElementById('from-en').textContent     = f.name.toUpperCase();
+  // to btn
+  document.getElementById('to-flag').textContent   = t.flag;
+  document.getElementById('to-native').textContent = t.native;
+  document.getElementById('to-en').textContent     = t.name.toUpperCase();
+  // col headers
+  document.getElementById('col-from-flag').textContent = f.flag;
+  document.getElementById('col-from-name').textContent = f.name;
+  document.getElementById('col-to-flag').textContent   = t.flag;
+  document.getElementById('col-to-name').textContent   = t.name;
+  // empty state
+  document.getElementById('empty-flags').textContent = `${f.flag} ⇄ ${t.flag}`;
+  document.getElementById('empty-hint').textContent  = `Type or tap the mic to speak in ${f.name}`;
+  // textarea
+  document.getElementById('text-input').placeholder = `Type in ${f.name}…`;
+  document.getElementById('text-input').dir = f.rtl ? 'rtl' : 'ltr';
+  buildMenus();
+}
+
+// ── DROPDOWNS ────────────────────────────────────────────────
+function toggleMenu(side) {
+  const menu = document.getElementById(side + '-menu');
+  const btn  = document.getElementById(side + '-btn');
+  const other = side === 'from' ? 'to' : 'from';
+  document.getElementById(other + '-menu').classList.remove('show');
+  document.getElementById(other + '-btn').classList.remove('open');
+  const isOpen = menu.classList.toggle('show');
+  btn.classList.toggle('open', isOpen);
+}
+
+function pickLang(side, i) {
+  if (side === 'from') {
+    if (i === toIdx) toIdx = fromIdx;
+    fromIdx = i;
+  } else {
+    if (i === fromIdx) fromIdx = toIdx;
+    toIdx = i;
+  }
+  document.getElementById(side + '-menu').classList.remove('show');
+  document.getElementById(side + '-btn').classList.remove('open');
+  clearMessages();
+  updateUI();
+}
+
+function swapLangs() {
+  [fromIdx, toIdx] = [toIdx, fromIdx];
+  clearMessages();
+  updateUI();
+}
+
+document.addEventListener('click', e => {
+  ['from','to'].forEach(side => {
+    const picker = document.getElementById(side + '-picker');
+    if (!picker.contains(e.target)) {
+      document.getElementById(side + '-menu').classList.remove('show');
+      document.getElementById(side + '-btn').classList.remove('open');
+    }
+  });
+});
+
+// ── MESSAGES ─────────────────────────────────────────────────
+function clearMessages() {
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = '';
+  const empty = document.createElement('div');
+  empty.className = 'empty-state';
+  empty.id = 'empty-state';
+  empty.innerHTML = `
+    <div class="big-flags" id="empty-flags">${LANGUAGES[fromIdx].flag} ⇄ ${LANGUAGES[toIdx].flag}</div>
+    <p id="empty-hint">Type or tap the mic to speak in ${LANGUAGES[fromIdx].name}</p>
+    <p>Translation will be spoken aloud automatically</p>`;
+  msgs.appendChild(empty);
+}
+
+function addMessage(original) {
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.remove();
+
+  const msgs   = document.getElementById('messages');
+  const rowId  = 'msg-' + Date.now();
+  const f = LANGUAGES[fromIdx];
+  const t = LANGUAGES[toIdx];
+
+  const row = document.createElement('div');
+  row.className = 'msg-row';
+  row.id = rowId;
+  row.innerHTML = `
+    <div class="msg-original">
+      <p class="msg-text-orig" style="direction:${f.rtl?'rtl':'ltr'};text-align:${f.rtl?'right':'left'}">${escHtml(original)}</p>
+    </div>
+    <div class="msg-translation" id="${rowId}-trans">
+      <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+    </div>`;
+  msgs.appendChild(row);
+  msgs.scrollTop = msgs.scrollHeight;
+  return { rowId, toLang: t };
+}
+
+function setTranslation(rowId, translation, toLang, error) {
+  const cell = document.getElementById(rowId + '-trans');
+  if (!cell) return;
+  if (error) {
+    cell.innerHTML = `<p class="msg-error">${escHtml(error)}</p>`;
+  } else {
+    cell.innerHTML = `
+      <p class="msg-text-trans" style="direction:${toLang.rtl?'rtl':'ltr'};text-align:${toLang.rtl?'right':'left'}">${escHtml(translation)}</p>
+      <button class="replay-btn" onclick="speakText(${JSON.stringify(translation)}, ${JSON.stringify(toLang.tts)})" title="Replay">🔊</button>`;
+  }
+  document.getElementById('messages').scrollTop = 99999;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── TRANSLATE ────────────────────────────────────────────────
+async function translate(text) {
+  if (!text.trim() || loading) return;
+  loading = true;
+  setSendBtn(false);
+
+  const f = LANGUAGES[fromIdx], t = LANGUAGES[toIdx];
+  const { rowId, toLang } = addMessage(text);
+
+  const sys = `You are a professional interpreter. Translate the user's text from ${f.name} to ${t.name}.
+Return ONLY valid JSON, no markdown, no backticks:
+{"translation":"translated text here"}
+Preserve tone and intent. Be natural.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: sys,
+        messages: [{ role: 'user', content: text }]
+      })
+    });
+    const data = await res.json();
+    const raw  = (data.content?.find(b => b.type === 'text')?.text || '{}')
+                   .replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(raw);
+    const translation = parsed.translation || '';
+    setTranslation(rowId, translation, toLang, null);
+    if (translation) speakText(translation, toLang.tts);
+  } catch (e) {
+    setTranslation(rowId, '', toLang, 'Translation failed. Please try again.');
+  } finally {
+    loading = false;
+    const inp = document.getElementById('text-input');
+    checkSendBtn(inp.value);
+    inp.focus();
+  }
+}
+
+function sendText() {
+  const inp = document.getElementById('text-input');
+  const txt = inp.value.trim();
+  if (!txt) return;
+  inp.value = '';
+  inp.style.height = 'auto';
+  checkSendBtn('');
+  translate(txt);
+}
+
+function onKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+}
+
+function onInput(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  checkSendBtn(el.value);
+}
+
+function checkSendBtn(val) {
+  const btn = document.getElementById('send-btn');
+  if (val.trim() && !loading) btn.classList.add('active');
+  else btn.classList.remove('active');
+}
+
+function setSendBtn(active) {
+  const btn = document.getElementById('send-btn');
+  if (active) btn.classList.add('active');
+  else btn.classList.remove('active');
+}
+
+// ── MIC ──────────────────────────────────────────────────────
+function toggleMic() {
+  if (recording) stopMic();
+  else startMic();
+}
+
+function startMic() {
+  setMicError('');
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { setMicError('Speech recognition not supported in this browser.'); return; }
+
+  recognition = new SR();
+  recognition.lang = LANGUAGES[fromIdx].bcp;
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = e => {
+    const transcript = e.results[0][0].transcript;
+    stopMic();
+    translate(transcript);
+  };
+  recognition.onerror = e => {
+    setMicError(e.error === 'not-allowed' ? 'Microphone access denied.' : 'Could not hear you. Try again.');
+    stopMic();
+  };
+  recognition.onend = () => stopMic();
+  recognition.start();
+  recording = true;
+  document.getElementById('mic-btn').classList.add('recording');
+  document.getElementById('text-input').placeholder = 'Listening…';
+}
+
+function stopMic() {
+  if (recognition) { try { recognition.stop(); } catch(e){} recognition = null; }
+  recording = false;
+  document.getElementById('mic-btn').classList.remove('recording');
+  document.getElementById('text-input').placeholder = 'Type in ' + LANGUAGES[fromIdx].name + '…';
+}
+
+function setMicError(msg) {
+  const el = document.getElementById('mic-error');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// ── TTS ──────────────────────────────────────────────────────
+function speakText(text, ttsCode) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = ttsCode;
+  utt.rate = 0.95;
+  window.speechSynthesis.speak(utt);
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+buildMenus();
+updateUI();
+</script>
+</body>
+</html>
